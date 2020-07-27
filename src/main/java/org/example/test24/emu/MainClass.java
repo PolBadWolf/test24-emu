@@ -57,13 +57,14 @@ public class MainClass implements CallBackFromRS232 {
             System.out.println("х.з.");
             System.exit(1);
         }
+        System.out.println("файл \"" + file.getName() + "\" успешно открыт");
 
         Thread mainThread = new Thread(()->run());
         mainThread.start();
 
         try {
             while (mainThread.isAlive()) {
-                Thread.sleep(100);
+                Thread.sleep(10);
                 tik.addAndGet(1);
             }
         } catch (InterruptedException e) {
@@ -163,14 +164,22 @@ public class MainClass implements CallBackFromRS232 {
                         continue;
                     }
 
-                    if (flagSendOff)    continue;
+                    if (flagSendOff)    {
+                        continue;
+                    }
 
                     if (subStrings[0].toLowerCase().equals("dc")) {
+                        flagSendOff = true;
+                        double distCurrent = 0;
                         int tikRazn = tikSample - tikOld;
-                        double distRazn = distSample - distOld;
-                        double distCurrent = (distRazn / tikRazn * (tikCurrent - tikOld));
+                        if (tikRazn == 0) {
+                            distCurrent = distSample;
+                        } else {
+                            double distRazn = distSample - distOld;
+                            distCurrent = (distRazn / tikRazn * (tikCurrent - tikOld)) + distOld;
+                        }
                         ConvertDigit.Int2bytes(tikCurrent, bodyCurrentDat, 1);
-                        ConvertDigit.Int2bytes((int)distSample, bodyCurrentDat, 5, 2);
+                        ConvertDigit.Int2bytes((int)distCurrent, bodyCurrentDat, 5, 2);
                         ConvertDigit.Int2bytes(0, bodyCurrentDat, 7, 2);    // ves
                         bodyCurrentDat[9] = ControlSumma.crc8(bodyCurrentDat, bodyCurrentDat.length - 1);
                         commPort.writeBlock(header);
