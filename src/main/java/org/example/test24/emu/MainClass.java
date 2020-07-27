@@ -13,7 +13,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class MainClass implements CallBackFromRS232 {
     private CommPort commPort = null;
-    private final BlockingQueue readQueue = new ArrayBlockingQueue(10);
+    //private final BlockingQueue readQueue = new ArrayBlockingQueue(10);
     private final boolean[] readFlagOn = {true};
     private BufferedReader reader = null;
     private AtomicInteger tik = new AtomicInteger(0);
@@ -58,10 +58,21 @@ public class MainClass implements CallBackFromRS232 {
             System.exit(1);
         }
 
-        new Thread(()->run()).start();
-        readQueue.add(this);
-        readQueue.add(this);
-        readQueue.add(this);
+        Thread mainThread = new Thread(()->run());
+        mainThread.start();
+        new Thread(()->{
+            try {
+                while (mainThread.isAlive()) {
+                    Thread.sleep(1);
+                    tik.addAndGet(1);
+                }
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }).start();
+        //readQueue.add(this);
+        //readQueue.add(this);
+        //readQueue.add(this);
     }
 
     private void initErrorCommMessage(int checkComm, CommPort commPort) {
@@ -80,38 +91,101 @@ public class MainClass implements CallBackFromRS232 {
     }
 
     private void run() {
+        boolean newCommand = true;
+        String[] subStrings = {""};
+        int tikSample = 0;
+        int tikOld = 0;
+        double distSample = 0;
+        double distOld = 0;
         byte[] header = { (byte) 0xe6, (byte) 0x19, (byte) 0x55, (byte) 0xaa };
         byte[] bodyStat = new byte[6];
         byte[] bodyCurrentDat = new byte[10];
         byte[] bodyTotalDat = new byte[30];
+        boolean flagSendOff = false;
 
         try {
             while (readFlagOn[0]) {
-                Object x = readQueue.poll(4, TimeUnit.MILLISECONDS);
-                if (x == null)  continue;
-                String string = reader.readLine();
-                if (string == null) {
-                    break;
-                }
-                String[] subStrings = string.split(" ");
+                Thread.sleep(1);
+                if (newCommand) {
+                    //Object x = readQueue.poll(1, TimeUnit.MILLISECONDS);
+                    //if (x == null)  continue;
+                    String string = reader.readLine();
+                    if (string == null) {
+                        break;
+                    }
+                    subStrings = string.split(" ");
 
-                switch (subStrings[0].toLowerCase()) {
-                    case "sf":
-                        bodyStat[0] = Status.SEND2PC_MFORWARD.getStat();
-                        int tikCur = tik.get();
-                        ConvertDigit.Int2bytes(tikCur, bodyStat, 1);
-                        bodyStat[5] = ControlSumma.crc8(bodyStat, 5);
-                        commPort.writeBlock();
-                        break;
-                    case "current":
-                        break;
-                    case "total":
-                        break;
-                    default:
-                        break;
+                    switch (subStrings[0].toLowerCase()) {
+                        case "smf":
+                            bodyStat[0] = Status.SEND2PC_MFORWARD.getStat();
+                            tikSample = Integer.parseInt(subStrings[1]);
+                            tik.set(tikSample);
+                            distSample = -1000;
+                            break;
+                        case "sms":
+                            bodyStat[0] = Status.SEND2PC_MSHELF.getStat();
+                            tikSample = Integer.parseInt(subStrings[1]);
+                            break;
+                        case "smb":
+                            bodyStat[0] = Status.SEND2PC_MBACK.getStat();
+                            tikSample = Integer.parseInt(subStrings[1]);
+                            break;
+                        case "dc":
+                            tikOld = tikSample;
+                            distOld = distSample;
+                            bodyCurrentDat[0] = Status.SEND2PC_DATA.getStat();
+                            tikSample = Integer.parseInt(subStrings[1]);
+                            distSample = Double.parseDouble(subStrings[2]);
+                            if (distOld == -1000) distOld = distSample;
+                            break;
+                        case "stop":
+                            bodyStat[0] = Status.SEND2PC_STOP.getStat();
+                            tikSample = Integer.parseInt(subStrings[1]);
+                            break;
+                        case "total":
+                            break;
+                        default:
+                            break;
+                    }
+                    newCommand = false;
                 }
-                double zn = Double.parseDouble(subStrings[0]);
-                double tm = Double.parseDouble(subStrings[1]);
+                else {
+                    int tikCurrent = tik.get();
+                    if ((tikCurrent % 5) > 0) {
+                        flagSendOff = false;
+                        continue;
+                    }
+
+                    if (flagSendOff)    continue;
+
+                    if (subStrings[0].toLowerCase().equals("dc")) {
+                        int tikRazn = tikSample - tikOld;
+                        double distRazn = distSample - distOld;
+                        double distCurrent = (distRazn / tikRazn * (tikCurrent - tikOld));
+                        ConvertDigit.Int2bytes(tikCurrent, bodyCurrentDat, 1);
+                        ConvertDigit.Int2bytes((int)distSample, bodyCurrentDat, 5, 2);
+                        ConvertDigit.Int2bytes(0, bodyCurrentDat, 7, 2);    // ves
+                        bodyCurrentDat[9] = ControlSumma.crc8(bodyCurrentDat, bodyCurrentDat.length - 1);
+                        commPort.writeBlock(header);
+                        commPort.writeBlock(new byte[] {(byte) bodyCurrentDat.length});
+                        commPort.writeBlock(bodyCurrentDat);
+                    }
+
+                    if (tikCurrent <tikSample)  continue;
+                    newCommand = true;
+
+                    switch (subStrings[0].toLowerCase()) {
+                        case "stop":
+                        case "sms":
+                        case "smf":
+                            ConvertDigit.Int2bytes(tikSample, bodyStat, 1);
+                            bodyStat[5] = ControlSumma.crc8(bodyStat, bodyStat.length - 1);
+                            commPort.writeBlock(header);
+                            commPort.writeBlock(new byte[] { (byte) bodyStat.length });
+                            commPort.writeBlock(bodyStat);
+                            break;
+                    }
+                }
             }
             readFlagOn[0] = false;
         } catch (InterruptedException e) {
