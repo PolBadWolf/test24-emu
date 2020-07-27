@@ -64,7 +64,7 @@ public class MainClass implements CallBackFromRS232 {
 
         try {
             while (mainThread.isAlive()) {
-                Thread.sleep(10);
+                Thread.sleep(0, 200);
                 tik.addAndGet(1);
             }
         } catch (InterruptedException e) {
@@ -113,7 +113,8 @@ public class MainClass implements CallBackFromRS232 {
 
         try {
             while (readFlagOn[0]) {
-                Thread.sleep(1);
+                //Thread.sleep(1);
+                //Thread.yield();
                 if (newCommand) {
                     //Object x = readQueue.poll(1, TimeUnit.MILLISECONDS);
                     //if (x == null)  continue;
@@ -187,13 +188,17 @@ public class MainClass implements CallBackFromRS232 {
                         commPort.writeBlock(bodyCurrentDat);
                     }
 
-                    if (tikCurrent <tikSample)  continue;
+                    if (tikCurrent <tikSample)  {
+                        Thread.sleep(1);
+                        continue;
+                    }
                     newCommand = true;
 
                     switch (subStrings[0].toLowerCase()) {
-                        case "stop":
-                        case "sms":
                         case "smf":
+                        case "sms":
+                        case "smb":
+                        case "stop":
                             ConvertDigit.Int2bytes(tikSample, bodyStat, 1);
                             bodyStat[5] = ControlSumma.crc8(bodyStat, bodyStat.length - 1);
                             commPort.writeBlock(header);
@@ -204,9 +209,11 @@ public class MainClass implements CallBackFromRS232 {
                 }
             }
             readFlagOn[0] = false;
-        } catch (InterruptedException e) {
+        }
+        catch (InterruptedException e) {
             e.printStackTrace(); // queue poll
-        } catch (IOException e) {
+        }
+        catch (IOException e) {
             e.printStackTrace(); // read line
         }
         catch (java.lang.Throwable e) {
