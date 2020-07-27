@@ -116,6 +116,7 @@ public class MainClass implements CallBackFromRS232 {
         byte[] header = { (byte) 0xe6, (byte) 0x19, (byte) 0x55, (byte) 0xaa };
         byte[] bodyStat = new byte[6];
         byte[] bodyCurrentDat = new byte[10];
+        byte[] bodyVes = new byte[8];
         byte[] bodyTotalDat = new byte[30];
         boolean flagSendOff = false;
 
@@ -134,17 +135,13 @@ public class MainClass implements CallBackFromRS232 {
 
                     switch (subStrings[0].toLowerCase()) {
                         case "smf":
-                            bodyStat[0] = Status.SEND2PC_MFORWARD.getStat();
                             tikSample = Integer.parseInt(subStrings[1]);
                             tik.set(tikSample);
                             distSample = -1000;
                             break;
                         case "sms":
-                            bodyStat[0] = Status.SEND2PC_MSHELF.getStat();
-                            tikSample = Integer.parseInt(subStrings[1]);
-                            break;
                         case "smb":
-                            bodyStat[0] = Status.SEND2PC_MBACK.getStat();
+                        case "stop":
                             tikSample = Integer.parseInt(subStrings[1]);
                             break;
                         case "dc":
@@ -154,10 +151,6 @@ public class MainClass implements CallBackFromRS232 {
                             tikSample = Integer.parseInt(subStrings[1]);
                             distSample = Double.parseDouble(subStrings[2]);
                             if (distOld == -1000) distOld = distSample;
-                            break;
-                        case "stop":
-                            bodyStat[0] = Status.SEND2PC_STOP.getStat();
-                            tikSample = Integer.parseInt(subStrings[1]);
                             break;
                         case "total":
                             break;
@@ -204,14 +197,17 @@ public class MainClass implements CallBackFromRS232 {
 
                     switch (subStrings[0].toLowerCase()) {
                         case "smf":
+                            sendStatus(header, bodyStat, tikSample, Status.SEND2PC_MFORWARD);
+                            sendVes(header, bodyVes, tikSample, ves);
+                            break;
                         case "sms":
+                            sendStatus(header, bodyStat, tikSample, Status.SEND2PC_MSHELF);
+                            break;
                         case "smb":
+                            sendStatus(header, bodyStat, tikSample, Status.SEND2PC_MBACK);
+                            break;
                         case "stop":
-                            ConvertDigit.Int2bytes(tikSample, bodyStat, 1);
-                            bodyStat[5] = ControlSumma.crc8(bodyStat, bodyStat.length - 1);
-                            commPort.writeBlock(header);
-                            commPort.writeBlock(new byte[] { (byte) bodyStat.length });
-                            commPort.writeBlock(bodyStat);
+                            sendStatus(header, bodyStat, tikSample, Status.SEND2PC_STOP);
                             break;
                     }
                 }
@@ -229,6 +225,34 @@ public class MainClass implements CallBackFromRS232 {
         }
     }
 
+    private void sendData(byte[] header, byte[] body, int tik, int data) {
+        body[0] = Status.SEND2PC_DATA.getStat();
+        ConvertDigit.Int2bytes(tik, body, 1);
+        ConvertDigit.Int2bytes(data, body, 5, 2);
+        body[body.length -1] = ControlSumma.crc8(body, body.length - 1);
+        commPort.writeBlock(header, );
+    }
+
+    private void sendStatus(byte[] header, byte[] body, int tik, Status stat) {
+        body[0] = stat.getStat();
+        ConvertDigit.Int2bytes(tik, body, 1);
+        body[5] = ControlSumma.crc8(body, body.length - 1);
+        commPort.writeBlock(header);
+        commPort.writeBlock(new byte[] {(byte) body.length});
+        commPort.writeBlock(body);
+    }
+
+    private void sendVes(byte[] header, byte[] body, int tik, double ves) {
+        body[0] = Status.SEND2PC_VES.getStat();
+        ConvertDigit.Int2bytes(tik, body, 1);
+        ConvertDigit.Int2bytes((int) ves, body, 5, 2);
+        body[7] = ControlSumma.crc8(body, body.length - 1);
+        commPort.writeBlock(header);
+        commPort.writeBlock(new byte[] {(byte) body.length});
+        commPort.writeBlock(body);
+    }
+
+
     @Override
     public void reciveRsPush(byte[] bytes, int lenght) {
 
@@ -241,6 +265,7 @@ public class MainClass implements CallBackFromRS232 {
         SEND2PC_MFORWARD    ((byte) 3),
         SEND2PC_MSHELF      ((byte) 4),
         SEND2PC_DATA        ((byte)11),
+        SEND2PC_VES         ((byte)12),
         SEND2PC_MDATA       ((byte)14),
         SEND2PC_CDATA       ((byte)15);
 
