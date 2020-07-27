@@ -17,6 +17,7 @@ public class MainClass implements CallBackFromRS232 {
     private final boolean[] readFlagOn = {true};
     private BufferedReader reader = null;
     private AtomicInteger tik = new AtomicInteger(0);
+    private double ves = 200;
 
     public static void main(String[] args) {
         new MainClass().start(args);
@@ -58,6 +59,13 @@ public class MainClass implements CallBackFromRS232 {
             System.exit(1);
         }
         System.out.println("файл \"" + file.getName() + "\" успешно открыт");
+
+        try {
+            ves = Double.parseDouble(args[2]);
+            System.out.println("принят вес " + ves);
+        } catch (java.lang.Throwable e) {
+            e.printStackTrace();
+        }
 
         Thread mainThread = new Thread(()->run());
         mainThread.start();
@@ -180,8 +188,8 @@ public class MainClass implements CallBackFromRS232 {
                             distCurrent = (distRazn / tikRazn * (tikCurrent - tikOld)) + distOld;
                         }
                         ConvertDigit.Int2bytes(tikCurrent, bodyCurrentDat, 1);
-                        ConvertDigit.Int2bytes((int)distCurrent, bodyCurrentDat, 5, 2);
-                        ConvertDigit.Int2bytes(0, bodyCurrentDat, 7, 2);    // ves
+                        ConvertDigit.Int2bytes((int) distCurrent, bodyCurrentDat, 5, 2);
+                        ConvertDigit.Int2bytes((int) ves, bodyCurrentDat, 7, 2);    // ves
                         bodyCurrentDat[9] = ControlSumma.crc8(bodyCurrentDat, bodyCurrentDat.length - 1);
                         commPort.writeBlock(header);
                         commPort.writeBlock(new byte[] {(byte) bodyCurrentDat.length});
