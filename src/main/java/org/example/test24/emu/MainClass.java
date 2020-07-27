@@ -60,16 +60,23 @@ public class MainClass implements CallBackFromRS232 {
 
         Thread mainThread = new Thread(()->run());
         mainThread.start();
-        new Thread(()->{
-            try {
-                while (mainThread.isAlive()) {
-                    Thread.sleep(1);
-                    tik.addAndGet(1);
-                }
-            } catch (InterruptedException e) {
-                e.printStackTrace();
+
+        try {
+            while (mainThread.isAlive()) {
+                Thread.sleep(100);
+                tik.addAndGet(1);
             }
-        }).start();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        commPort.Close();
+        try {
+            reader.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        System.exit(0);
         //readQueue.add(this);
         //readQueue.add(this);
         //readQueue.add(this);

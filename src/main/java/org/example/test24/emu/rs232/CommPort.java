@@ -198,10 +198,10 @@ public class CommPort implements CommPort_Interface {
     }
 
     public void writeBlock(byte[] bytes) {
-        //port.writeBytes(bytes, bytes.length);
-        System.out.println();
+        port.writeBytes(bytes, bytes.length);
+        /*System.out.println();
         for (int i = 0; i < bytes.length; i++) {
             System.out.printf("0x%02X ", (bytes[i] & 0xff));
-        }
+        }*/
     }
 }
