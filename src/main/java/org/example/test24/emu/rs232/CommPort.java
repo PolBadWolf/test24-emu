@@ -196,4 +196,8 @@ public class CommPort implements CommPort_Interface {
             flagHead = true;
         }
     }
+
+    public void writeBlock(byte[] bytes) {
+        port.writeBytes(bytes, bytes.length);
+    }
 }
