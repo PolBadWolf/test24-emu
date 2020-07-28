@@ -6,9 +6,6 @@ import org.example.test24.emu.rs232.BAUD;
 import org.example.test24.emu.rs232.CommPort;
 
 import java.io.*;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class MainClass implements CallBackFromRS232 {
@@ -64,7 +61,8 @@ public class MainClass implements CallBackFromRS232 {
             ves = Double.parseDouble(args[2]);
             System.out.println("принят вес " + ves);
         } catch (java.lang.Throwable e) {
-            e.printStackTrace();
+            //e.printStackTrace();
+            System.out.println("вес по умолчанию 200");
         }
 
         Thread mainThread = new Thread(()->run());
@@ -72,7 +70,7 @@ public class MainClass implements CallBackFromRS232 {
 
         try {
             while (mainThread.isAlive()) {
-                Thread.sleep(0, 200);
+                Thread.sleep(1);
                 tik.addAndGet(1);
             }
         } catch (InterruptedException e) {
@@ -115,7 +113,7 @@ public class MainClass implements CallBackFromRS232 {
         double distOld = 0;
         byte[] header = { (byte) 0xe6, (byte) 0x19, (byte) 0x55, (byte) 0xaa };
         byte[] bodyStat = new byte[6];
-        byte[] bodyCurrentDat = new byte[10];
+        byte[] bodyCurrentDistance = new byte[8];
         byte[] bodyVes = new byte[8];
         byte[] bodyTotalDat = new byte[30];
         boolean flagSendOff = false;
@@ -147,7 +145,7 @@ public class MainClass implements CallBackFromRS232 {
                         case "dc":
                             tikOld = tikSample;
                             distOld = distSample;
-                            bodyCurrentDat[0] = Status.SEND2PC_DATA.getStat();
+                            bodyCurrentDistance[0] = Status.SEND2PC_DATA.getStat();
                             tikSample = Integer.parseInt(subStrings[1]);
                             distSample = Double.parseDouble(subStrings[2]);
                             if (distOld == -1000) distOld = distSample;
@@ -180,13 +178,7 @@ public class MainClass implements CallBackFromRS232 {
                             double distRazn = distSample - distOld;
                             distCurrent = (distRazn / tikRazn * (tikCurrent - tikOld)) + distOld;
                         }
-                        ConvertDigit.Int2bytes(tikCurrent, bodyCurrentDat, 1);
-                        ConvertDigit.Int2bytes((int) distCurrent, bodyCurrentDat, 5, 2);
-                        ConvertDigit.Int2bytes((int) ves, bodyCurrentDat, 7, 2);    // ves
-                        bodyCurrentDat[9] = ControlSumma.crc8(bodyCurrentDat, bodyCurrentDat.length - 1);
-                        commPort.writeBlock(header);
-                        commPort.writeBlock(new byte[] {(byte) bodyCurrentDat.length});
-                        commPort.writeBlock(bodyCurrentDat);
+                        sendData(header, bodyCurrentDistance, tikCurrent, (int) distCurrent);
                     }
 
                     if (tikCurrent <tikSample)  {
@@ -230,7 +222,9 @@ public class MainClass implements CallBackFromRS232 {
         ConvertDigit.Int2bytes(tik, body, 1);
         ConvertDigit.Int2bytes(data, body, 5, 2);
         body[body.length -1] = ControlSumma.crc8(body, body.length - 1);
-        commPort.writeBlock(header, );
+        commPort.writeBlock(header);
+        commPort.writeBlock(new byte[] {(byte) body.length});
+        commPort.writeBlock(body);
     }
 
     private void sendStatus(byte[] header, byte[] body, int tik, Status stat) {
