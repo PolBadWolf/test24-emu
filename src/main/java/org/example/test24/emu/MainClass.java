@@ -6,20 +6,20 @@ import org.example.test24.emu.rs232.BAUD;
 import org.example.test24.emu.rs232.CommPort;
 
 import java.io.*;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 
 public class MainClass implements CallBackFromRS232 {
     private CommPort commPort = null;
     //private final BlockingQueue readQueue = new ArrayBlockingQueue(10);
     private final boolean[] readFlagOn = {true};
     private BufferedReader reader = null;
-    private AtomicInteger tik = new AtomicInteger(0);
+    private int tik = 0;
     private double ves = 200;
 
     private int countPack = 0;
 
-    private AtomicBoolean atomicBoolean = new AtomicBoolean(false);
+    private Object lock = new Object();
+
+    boolean aBoolean1 = false, aBoolean2 = true;
 
     public static void main(String[] args) {
         new MainClass().start(args);
@@ -74,14 +74,19 @@ public class MainClass implements CallBackFromRS232 {
         mainThread.start();
 
         try {
-                while (mainThread.isAlive()) {
-                    Thread.sleep(10);
-                    /*if (atomicBoolean.get()) {
-                        tik.addAndGet(1);
-                        atomicBoolean.set(false);
-                    }*/
+            while (mainThread.isAlive()) {
+                Thread.sleep(1);
+                synchronized (lock) {
+                    if (aBoolean1) {
+                        aBoolean1 = false;
+                        tik++;
+                        aBoolean2 = true;
+                    }
+                    else continue;
+                }
+                Thread.yield();
             }
-        } catch (InterruptedException e) {
+        } catch (java.lang.Throwable e) {
             e.printStackTrace();
         }
 
@@ -92,9 +97,6 @@ public class MainClass implements CallBackFromRS232 {
             e.printStackTrace();
         }
         System.exit(0);
-        //readQueue.add(this);
-        //readQueue.add(this);
-        //readQueue.add(this);
     }
 
     private void initErrorCommMessage(int checkComm, CommPort commPort) {
@@ -123,11 +125,7 @@ public class MainClass implements CallBackFromRS232 {
         byte[] bodyStat = new byte[6];
         byte[] bodyCurrentDistance = new byte[8];
         byte[] bodyVes = new byte[8];
-        byte[] bodyTotalDat = new byte[30];
-        boolean flagSendOff = false;
-        String lastCommand = "";
         int tikCurrent = 0;
-        int lastTik1 = 0, lastTik2 = 0;
 
         try {
                 while (readFlagOn[0]) {
@@ -141,7 +139,7 @@ public class MainClass implements CallBackFromRS232 {
                         switch (subStrings[0].toLowerCase()) {
                             case "smf":
                                 tikSample = Integer.parseInt(subStrings[1]);
-                                tik.set(tikSample);
+                                tik = tikSample;
                                 distSample = -1000;
                                 break;
                             case "sms":
@@ -184,25 +182,23 @@ public class MainClass implements CallBackFromRS232 {
                                     System.out.println("count pack = " + countPack);
                                     break;
                             }
-//                            flagSendOff = false;
                             continue;
                         }
 
-                        if (flagSendOff) {
-                            /*if (!atomicBoolean.get()) {
-                                atomicBoolean.set(true);
-                            }*/
+                        if (aBoolean2) {
+                            aBoolean2 = false;
+                            aBoolean1 = true;
+                        }
+                        else {
                             Thread.sleep(1);
-                            tik.addAndGet(1);
-                            tikCurrent = tik.get();
+                            continue;
+                        }
+                        tikCurrent = tik;
+
                             if ((tikCurrent % 5) > 0) {
                                 continue;
-                            } else {
-                                flagSendOff = false;
                             }
-                        }
 
-                        flagSendOff = true;
                         double distCurrent = 0;
                         int tikRazn = tikSample - tikOld;
                         if (tikRazn == 0) {
@@ -214,16 +210,13 @@ public class MainClass implements CallBackFromRS232 {
                         sendData(header, bodyCurrentDistance, tikCurrent, (int) distCurrent);
 
                         if (tikCurrent < tikSample) {
-                            Thread.sleep(1);
+                            //Thread.sleep(1);
                             continue;
                         }
                         newCommand = true;
                     }
                 }
             readFlagOn[0] = false;
-        }
-        catch (InterruptedException e) {
-            e.printStackTrace(); // queue poll
         }
         catch (IOException e) {
             e.printStackTrace(); // read line

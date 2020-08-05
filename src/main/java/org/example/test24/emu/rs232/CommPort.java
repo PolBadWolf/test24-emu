@@ -40,7 +40,7 @@ public class CommPort implements CommPort_Interface {
         port = SerialPort.getCommPort(portNameCase);
         port.setComPortParameters(baud.getBaud(), 8, SerialPort.ONE_STOP_BIT, SerialPort.NO_PARITY);
         port.setFlowControl(SerialPort.FLOW_CONTROL_DISABLED);
-        port.setComPortTimeouts(SerialPort.TIMEOUT_NONBLOCKING, 1000, 1000);
+        port.setComPortTimeouts(SerialPort.TIMEOUT_NONBLOCKING, 0, 0);
 
         if (port.openPort()) {
             runner_interface = runner;
