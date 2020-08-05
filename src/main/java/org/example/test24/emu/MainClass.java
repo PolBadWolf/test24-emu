@@ -6,6 +6,7 @@ import org.example.test24.emu.rs232.BAUD;
 import org.example.test24.emu.rs232.CommPort;
 
 import java.io.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class MainClass implements CallBackFromRS232 {
@@ -15,6 +16,10 @@ public class MainClass implements CallBackFromRS232 {
     private BufferedReader reader = null;
     private AtomicInteger tik = new AtomicInteger(0);
     private double ves = 200;
+
+    private int countPack = 0;
+
+    private AtomicBoolean atomicBoolean = new AtomicBoolean(false);
 
     public static void main(String[] args) {
         new MainClass().start(args);
@@ -69,9 +74,12 @@ public class MainClass implements CallBackFromRS232 {
         mainThread.start();
 
         try {
-            while (mainThread.isAlive()) {
-                Thread.sleep(1);
-                tik.addAndGet(1);
+                while (mainThread.isAlive()) {
+                    Thread.sleep(10);
+                    /*if (atomicBoolean.get()) {
+                        tik.addAndGet(1);
+                        atomicBoolean.set(false);
+                    }*/
             }
         } catch (InterruptedException e) {
             e.printStackTrace();
@@ -117,58 +125,83 @@ public class MainClass implements CallBackFromRS232 {
         byte[] bodyVes = new byte[8];
         byte[] bodyTotalDat = new byte[30];
         boolean flagSendOff = false;
+        String lastCommand = "";
+        int tikCurrent = 0;
+        int lastTik1 = 0, lastTik2 = 0;
 
         try {
-            while (readFlagOn[0]) {
-                //Thread.sleep(1);
-                //Thread.yield();
-                if (newCommand) {
-                    //Object x = readQueue.poll(1, TimeUnit.MILLISECONDS);
-                    //if (x == null)  continue;
-                    String string = reader.readLine();
-                    if (string == null) {
-                        break;
-                    }
-                    subStrings = string.split(" ");
+                while (readFlagOn[0]) {
+                    if (newCommand) {
+                        String string = reader.readLine();
+                        if (string == null) {
+                            break;
+                        }
+                        subStrings = string.split(" ");
 
-                    switch (subStrings[0].toLowerCase()) {
-                        case "smf":
-                            tikSample = Integer.parseInt(subStrings[1]);
-                            tik.set(tikSample);
-                            distSample = -1000;
-                            break;
-                        case "sms":
-                        case "smb":
-                        case "stop":
-                            tikSample = Integer.parseInt(subStrings[1]);
-                            break;
-                        case "dc":
-                            tikOld = tikSample;
-                            distOld = distSample;
-                            bodyCurrentDistance[0] = Status.SEND2PC_DATA.getStat();
-                            tikSample = Integer.parseInt(subStrings[1]);
-                            distSample = Double.parseDouble(subStrings[2]);
-                            if (distOld == -1000) distOld = distSample;
-                            break;
-                        case "total":
-                            break;
-                        default:
-                            break;
+                        switch (subStrings[0].toLowerCase()) {
+                            case "smf":
+                                tikSample = Integer.parseInt(subStrings[1]);
+                                tik.set(tikSample);
+                                distSample = -1000;
+                                break;
+                            case "sms":
+                            case "smb":
+                            case "stop":
+                                tikSample = Integer.parseInt(subStrings[1]);
+                                break;
+                            case "dc":
+                                tikOld = tikSample;
+                                distOld = distSample;
+                                bodyCurrentDistance[0] = Status.SEND2PC_DATA.getStat();
+                                tikSample = Integer.parseInt(subStrings[1]);
+                                distSample = Double.parseDouble(subStrings[2]);
+                                if (distOld == -1000) distOld = distSample;
+                                break;
+                            case "total":
+                                break;
+                            default:
+                                break;
+                        }
+                        newCommand = false;
                     }
-                    newCommand = false;
-                }
-                else {
-                    int tikCurrent = tik.get();
-                    if ((tikCurrent % 5) > 0) {
-                        flagSendOff = false;
-                        continue;
-                    }
+                    else  {
+                        if (!subStrings[0].toLowerCase().equals("dc")) {
+                            newCommand = true;
 
-                    if (flagSendOff)    {
-                        continue;
-                    }
+                            switch (subStrings[0].toLowerCase()) {
+                                case "smf":
+                                    sendStatus(header, bodyStat, tikSample, Status.SEND2PC_MFORWARD);
+                                    sendVes(header, bodyVes, tikSample, ves);
+                                    break;
+                                case "sms":
+                                    sendStatus(header, bodyStat, tikSample, Status.SEND2PC_MSHELF);
+                                    break;
+                                case "smb":
+                                    sendStatus(header, bodyStat, tikSample, Status.SEND2PC_MBACK);
+                                    break;
+                                case "stop":
+                                    sendStatus(header, bodyStat, tikSample, Status.SEND2PC_STOP);
+                                    System.out.println("count pack = " + countPack);
+                                    break;
+                            }
+//                            flagSendOff = false;
+                            continue;
+                        }
 
-                    if (subStrings[0].toLowerCase().equals("dc")) {
+                        if (flagSendOff) {
+                            /*if (!atomicBoolean.get()) {
+                                atomicBoolean.set(true);
+                            }*/
+                            Thread.sleep(1);
+                            tik.addAndGet(1);
+                            tikCurrent = tik.get();
+                            if ((tikCurrent % 5) > 0) {
+                                continue;
+                            } else {
+                                flagSendOff = false;
+                            }
+                        }
+
                         flagSendOff = true;
                         double distCurrent = 0;
                         int tikRazn = tikSample - tikOld;
@@ -179,31 +212,14 @@ public class MainClass implements CallBackFromRS232 {
                             distCurrent = (distRazn / tikRazn * (tikCurrent - tikOld)) + distOld;
                         }
                         sendData(header, bodyCurrentDistance, tikCurrent, (int) distCurrent);
-                    }
 
-                    if (tikCurrent <tikSample)  {
-                        Thread.sleep(1);
-                        continue;
-                    }
-                    newCommand = true;
-
-                    switch (subStrings[0].toLowerCase()) {
-                        case "smf":
-                            sendStatus(header, bodyStat, tikSample, Status.SEND2PC_MFORWARD);
-                            sendVes(header, bodyVes, tikSample, ves);
-                            break;
-                        case "sms":
-                            sendStatus(header, bodyStat, tikSample, Status.SEND2PC_MSHELF);
-                            break;
-                        case "smb":
-                            sendStatus(header, bodyStat, tikSample, Status.SEND2PC_MBACK);
-                            break;
-                        case "stop":
-                            sendStatus(header, bodyStat, tikSample, Status.SEND2PC_STOP);
-                            break;
+                        if (tikCurrent < tikSample) {
+                            Thread.sleep(1);
+                            continue;
+                        }
+                        newCommand = true;
                     }
                 }
-            }
             readFlagOn[0] = false;
         }
         catch (InterruptedException e) {
@@ -218,6 +234,7 @@ public class MainClass implements CallBackFromRS232 {
     }
 
     private void sendData(byte[] header, byte[] body, int tik, int data) {
+        countPack++;
         body[0] = Status.SEND2PC_DATA.getStat();
         ConvertDigit.Int2bytes(tik, body, 1);
         ConvertDigit.Int2bytes(data, body, 5, 2);
