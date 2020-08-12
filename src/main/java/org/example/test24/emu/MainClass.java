@@ -124,7 +124,8 @@ public class MainClass implements CallBackFromRS232 {
         byte[] bodyVes = new byte[8];
         int tikCurrent = 0;
 
-        try {
+        if (n_cycle < 2) {
+            try {
                 while (readFlagOn[0]) {
                     if (newCommand) {
                         String string = reader.readLine();
@@ -187,9 +188,9 @@ public class MainClass implements CallBackFromRS232 {
                         tik++;
                         tikCurrent = tik;
 
-                            if ((tikCurrent % 5) > 0) {
-                                continue;
-                            }
+                        if ((tikCurrent % 5) > 0) {
+                            continue;
+                        }
 
                         double distCurrent = 0;
                         int tikRazn = tikSample - tikOld;
@@ -207,13 +208,16 @@ public class MainClass implements CallBackFromRS232 {
                         newCommand = true;
                     }
                 }
-            readFlagOn[0] = false;
-        }
-        catch (IOException e) {
-            e.printStackTrace(); // read line
-        }
-        catch (java.lang.Throwable e) {
-            e.printStackTrace();
+                readFlagOn[0] = false;
+            }
+            catch (IOException e) {
+                e.printStackTrace(); // read line
+            }
+            catch (java.lang.Throwable e) {
+                e.printStackTrace();
+            }
+        } else {
+            
         }
     }
 
