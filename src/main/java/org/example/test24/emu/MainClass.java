@@ -17,10 +17,6 @@ public class MainClass implements CallBackFromRS232 {
 
     private int countPack = 0;
 
-    private Object lock = new Object();
-
-    boolean aBoolean1 = false, aBoolean2 = true;
-
     public static void main(String[] args) {
         new MainClass().start(args);
     }
@@ -36,7 +32,7 @@ public class MainClass implements CallBackFromRS232 {
         }
 
         namePort = args[0];
-        int checkComm = commPort.Open(this, namePort, BAUD.baud115200);
+        int checkComm = commPort.Open(this, namePort, BAUD.baud57600);
         if (checkComm != CommPort.INITCODE_OK) {
             initErrorCommMessage(checkComm, commPort);
             System.exit(1);
@@ -75,15 +71,7 @@ public class MainClass implements CallBackFromRS232 {
 
         try {
             while (mainThread.isAlive()) {
-                Thread.sleep(1);
-                synchronized (lock) {
-                    if (aBoolean1) {
-                        aBoolean1 = false;
-                        tik++;
-                        aBoolean2 = true;
-                    }
-                    else continue;
-                }
+                Thread.sleep(100);
                 Thread.yield();
             }
         } catch (java.lang.Throwable e) {
@@ -139,7 +127,8 @@ public class MainClass implements CallBackFromRS232 {
                         switch (subStrings[0].toLowerCase()) {
                             case "smf":
                                 tikSample = Integer.parseInt(subStrings[1]);
-                                tik = tikSample;
+                                tik = 0;
+                                tikOld = 0;
                                 distSample = -1000;
                                 break;
                             case "sms":
@@ -185,14 +174,8 @@ public class MainClass implements CallBackFromRS232 {
                             continue;
                         }
 
-                        if (aBoolean2) {
-                            aBoolean2 = false;
-                            aBoolean1 = true;
-                        }
-                        else {
-                            Thread.sleep(1);
-                            continue;
-                        }
+                        Thread.sleep(1);
+                        tik++;
                         tikCurrent = tik;
 
                             if ((tikCurrent % 5) > 0) {
@@ -210,7 +193,6 @@ public class MainClass implements CallBackFromRS232 {
                         sendData(header, bodyCurrentDistance, tikCurrent, (int) distCurrent);
 
                         if (tikCurrent < tikSample) {
-                            //Thread.sleep(1);
                             continue;
                         }
                         newCommand = true;
@@ -227,6 +209,7 @@ public class MainClass implements CallBackFromRS232 {
     }
 
     private void sendData(byte[] header, byte[] body, int tik, int data) {
+        //System.out.println(tik + "\t" + data);
         countPack++;
         body[0] = Status.SEND2PC_DATA.getStat();
         ConvertDigit.Int2bytes(tik, body, 1);
