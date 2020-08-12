@@ -15,6 +15,7 @@ public class MainClass implements CallBackFromRS232 {
     private int tik = 0;
     private double ves = 200;
 
+    private int n_cycle = 0;
     private int countPack = 0;
 
     public static void main(String[] args) {
@@ -64,6 +65,14 @@ public class MainClass implements CallBackFromRS232 {
         } catch (java.lang.Throwable e) {
             //e.printStackTrace();
             System.out.println("вес по умолчанию 200");
+        }
+
+        try {
+            n_cycle = Integer.parseInt(args[3]);
+            System.out.println("автоматический режим " + n_cycle + " циклов");
+        } catch (java.lang.Throwable e) {
+            System.out.println("ручной режим");
+            n_cycle = 0;
         }
 
         Thread mainThread = new Thread(()->run());
