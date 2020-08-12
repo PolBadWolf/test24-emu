@@ -221,9 +221,12 @@ public class MainClass implements CallBackFromRS232 {
             catch (java.lang.Throwable e) {
                 e.printStackTrace();
             }
-        } else {
+        }
+        else {
+            int op_n = n_cycle;
             while (n_cycle > 0) {
                 n_cycle--;
+                System.out.println((op_n - n_cycle) + " цикл:");
                 try {
                     reader.close();
                     fileReader.close();
@@ -322,8 +325,10 @@ public class MainClass implements CallBackFromRS232 {
                             newCommand = true;
                         }
                     }
-                    Thread.sleep(5_000);
-                    countPack = 0;
+                    if (n_cycle > 0) {
+                        Thread.sleep(5_000);
+                        countPack = 0;
+                    }
                 } catch (FileNotFoundException e) {
                     System.out.println("ошибка открытия файла: " + e.getMessage());
                 } catch (IOException e) {
@@ -332,11 +337,12 @@ public class MainClass implements CallBackFromRS232 {
                     e.printStackTrace();
                 }
             }
+            System.out.println("конец циклов");
         }
     }
 
     private void sendData(byte[] header, byte[] body, int tik, int data) {
-        System.out.println(tik + "\t" + data);
+        //System.out.println(tik + "\t" + data);
         countPack++;
         body[0] = Status.SEND2PC_DATA.getStat();
         ConvertDigit.Int2bytes(tik, body, 1);
