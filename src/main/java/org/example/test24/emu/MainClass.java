@@ -15,11 +15,10 @@ public class MainClass implements CallBackFromRS232 {
     private int tik = 0;
     private double ves = 200;
 
+    private int n_cycle = 0;
     private int countPack = 0;
-
-    private Object lock = new Object();
-
-    boolean aBoolean1 = false, aBoolean2 = true;
+    private File file = null;
+    private FileReader fileReader = null;
 
     public static void main(String[] args) {
         new MainClass().start(args);
@@ -36,7 +35,7 @@ public class MainClass implements CallBackFromRS232 {
         }
 
         namePort = args[0];
-        int checkComm = commPort.Open(this, namePort, BAUD.baud115200);
+        int checkComm = commPort.Open(this, namePort, BAUD.baud57600);
         if (checkComm != CommPort.INITCODE_OK) {
             initErrorCommMessage(checkComm, commPort);
             System.exit(1);
@@ -44,8 +43,6 @@ public class MainClass implements CallBackFromRS232 {
 
         System.out.println("порт \"" + namePort + "\" открыт успешно");
 
-        File file = null;
-        FileReader fileReader = null;
         try {
             file = new File(args[1]);
             fileReader = new FileReader(file);
@@ -70,20 +67,20 @@ public class MainClass implements CallBackFromRS232 {
             System.out.println("вес по умолчанию 200");
         }
 
+        try {
+            n_cycle = Integer.parseInt(args[3]);
+            System.out.println("автоматический режим " + n_cycle + " циклов");
+        } catch (java.lang.Throwable e) {
+            System.out.println("ручной режим");
+            n_cycle = 0;
+        }
+
         Thread mainThread = new Thread(()->run());
         mainThread.start();
 
         try {
             while (mainThread.isAlive()) {
-                Thread.sleep(1);
-                synchronized (lock) {
-                    if (aBoolean1) {
-                        aBoolean1 = false;
-                        tik++;
-                        aBoolean2 = true;
-                    }
-                    else continue;
-                }
+                Thread.sleep(100);
                 Thread.yield();
             }
         } catch (java.lang.Throwable e) {
@@ -127,7 +124,8 @@ public class MainClass implements CallBackFromRS232 {
         byte[] bodyVes = new byte[8];
         int tikCurrent = 0;
 
-        try {
+        if (n_cycle < 2) {
+            try {
                 while (readFlagOn[0]) {
                     if (newCommand) {
                         String string = reader.readLine();
@@ -139,7 +137,8 @@ public class MainClass implements CallBackFromRS232 {
                         switch (subStrings[0].toLowerCase()) {
                             case "smf":
                                 tikSample = Integer.parseInt(subStrings[1]);
-                                tik = tikSample;
+                                tik = 0;
+                                tikOld = 0;
                                 distSample = -1000;
                                 break;
                             case "sms":
@@ -185,19 +184,13 @@ public class MainClass implements CallBackFromRS232 {
                             continue;
                         }
 
-                        if (aBoolean2) {
-                            aBoolean2 = false;
-                            aBoolean1 = true;
-                        }
-                        else {
-                            Thread.sleep(1);
-                            continue;
-                        }
+                        Thread.sleep(1);
+                        tik++;
                         tikCurrent = tik;
 
-                            if ((tikCurrent % 5) > 0) {
-                                continue;
-                            }
+                        if ((tikCurrent % 5) > 0) {
+                            continue;
+                        }
 
                         double distCurrent = 0;
                         int tikRazn = tikSample - tikOld;
@@ -210,23 +203,99 @@ public class MainClass implements CallBackFromRS232 {
                         sendData(header, bodyCurrentDistance, tikCurrent, (int) distCurrent);
 
                         if (tikCurrent < tikSample) {
-                            //Thread.sleep(1);
                             continue;
                         }
                         newCommand = true;
                     }
                 }
-            readFlagOn[0] = false;
-        }
-        catch (IOException e) {
-            e.printStackTrace(); // read line
-        }
-        catch (java.lang.Throwable e) {
-            e.printStackTrace();
+                readFlagOn[0] = false;
+            }
+            catch (IOException e) {
+                e.printStackTrace(); // read line
+            }
+            catch (java.lang.Throwable e) {
+                e.printStackTrace();
+            }
+        } else {
+            while (n_cycle > 0 && readFlagOn[0]) {
+                n_cycle--;
+                try {
+                    reader.close();
+                    fileReader.close();
+                    fileReader = new FileReader(file);
+                    reader = new BufferedReader(fileReader);
+                    newCommand = true;
+                    while (readFlagOn[0]) {
+                        if (newCommand) {
+                            String string = reader.readLine();
+                            if (string == null) break;
+                            subStrings = string.split(" ");
+
+                            switch (subStrings[0].toLowerCase()) {
+                                case "smf":
+                                    tikSample = Integer.parseInt(subStrings[1]);
+                                    tik = 0;
+                                    tikOld = 0;
+                                    distSample = -1000;
+                                    break;
+                                case "sms":
+                                case "smb":
+                                case "stop":
+                                    tikSample = Integer.parseInt(subStrings[1]);
+                                    break;
+                                case "dc":
+                                    tikOld = tikSample;
+                                    distOld = distSample;
+                                    bodyCurrentDistance[0] = Status.SEND2PC_DATA.getStat();
+                                    tikSample = Integer.parseInt(subStrings[1]);
+                                    distSample = Double.parseDouble(subStrings[2]);
+                                    if (distOld == -1000) distOld = distSample;
+                                    break;
+                                case "total":
+                                    break;
+                                default:
+                                    break;
+                            }
+                            newCommand = false;
+                        }
+                        else {
+                            if (!subStrings[0].toLowerCase().equals("dc")) {
+                                newCommand = true;
+
+                                switch (subStrings[0].toLowerCase()) {
+                                    case "smf":
+                                        sendStatus(header, bodyStat, tikSample, Status.SEND2PC_CFORWARD);
+                                        sendVes(header, bodyVes, tikSample, ves);
+                                        break;
+                                    case "sms":
+                                        sendStatus(header, bodyStat, tikSample, Status.SEND2PC_CSHELF);
+                                        break;
+                                    case "smb":
+                                        sendStatus(header, bodyStat, tikSample, Status.SEND2PC_CBACK);
+                                        break;
+                                    case "stop":
+                                        if (n_cycle > 0) {
+                                            sendStatus(header, bodyStat, tikSample, Status.SEND2PC_CDELAY);
+                                        } else {
+                                            sendStatus(header, bodyStat, tikSample, Status.SEND2PC_STOP);
+                                        }
+                                        System.out.println("count pack = " + countPack);
+                                        break;
+                                }
+                            }
+                        }
+                    }
+                } catch (FileNotFoundException e) {
+                    System.out.println("ошибка открытия файла: " + e.getMessage());
+                } catch (IOException e) {
+                    System.out.println("ошибка при закрытии файла: " + e.getMessage());
+                }
+            }
         }
     }
 
     private void sendData(byte[] header, byte[] body, int tik, int data) {
+        //System.out.println(tik + "\t" + data);
         countPack++;
         body[0] = Status.SEND2PC_DATA.getStat();
         ConvertDigit.Int2bytes(tik, body, 1);
@@ -268,6 +337,11 @@ public class MainClass implements CallBackFromRS232 {
         SEND2PC_STOP        ((byte) 2),
         SEND2PC_MFORWARD    ((byte) 3),
         SEND2PC_MSHELF      ((byte) 4),
+        SEND2PC_CALARM      ((byte) 5),
+        SEND2PC_CBACK       ((byte) 6),
+        SEND2PC_CDELAY      ((byte) 7),
+        SEND2PC_CFORWARD    ((byte) 8),
+        SEND2PC_CSHELF      ((byte) 9),
         SEND2PC_DATA        ((byte)11),
         SEND2PC_VES         ((byte)12),
         SEND2PC_MDATA       ((byte)14),
