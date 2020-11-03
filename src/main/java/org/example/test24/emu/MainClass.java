@@ -169,16 +169,21 @@ public class MainClass implements CallBackFromRS232 {
                                 case "smf":
                                     sendStatus(header, bodyStat, tikSample, Status.SEND2PC_MFORWARD);
                                     sendVes(header, bodyVes, tikSample, ves);
+                                    System.out.println("вперед");
                                     break;
                                 case "sms":
                                     sendStatus(header, bodyStat, tikSample, Status.SEND2PC_MSHELF);
+                                    System.out.println("полка");
                                     break;
                                 case "smb":
                                     sendStatus(header, bodyStat, tikSample, Status.SEND2PC_MBACK);
+                                    System.out.println("назад");
                                     break;
                                 case "stop":
                                     sendStatus(header, bodyStat, tikSample, Status.SEND2PC_STOP);
                                     System.out.println("count pack = " + countPack);
+                                    System.out.println("стоп");
+                                    readFlagOn[0] = false;
                                     break;
                             }
                             continue;
@@ -216,15 +221,19 @@ public class MainClass implements CallBackFromRS232 {
             catch (java.lang.Throwable e) {
                 e.printStackTrace();
             }
-        } else {
-            while (n_cycle > 0 && readFlagOn[0]) {
+        }
+        else {
+            int op_n = n_cycle;
+            while (n_cycle > 0) {
                 n_cycle--;
+                System.out.println((op_n - n_cycle) + " цикл:");
                 try {
                     reader.close();
                     fileReader.close();
                     fileReader = new FileReader(file);
                     reader = new BufferedReader(fileReader);
                     newCommand = true;
+                    readFlagOn[0] = true;
                     while (readFlagOn[0]) {
                         if (newCommand) {
                             String string = reader.readLine();
@@ -266,31 +275,69 @@ public class MainClass implements CallBackFromRS232 {
                                     case "smf":
                                         sendStatus(header, bodyStat, tikSample, Status.SEND2PC_CFORWARD);
                                         sendVes(header, bodyVes, tikSample, ves);
+                                        System.out.println("вперед");
                                         break;
                                     case "sms":
                                         sendStatus(header, bodyStat, tikSample, Status.SEND2PC_CSHELF);
+                                        System.out.println("полка");
                                         break;
                                     case "smb":
                                         sendStatus(header, bodyStat, tikSample, Status.SEND2PC_CBACK);
+                                        System.out.println("назад");
                                         break;
                                     case "stop":
                                         if (n_cycle > 0) {
                                             sendStatus(header, bodyStat, tikSample, Status.SEND2PC_CDELAY);
+                                            System.out.println("пауза");
                                         } else {
                                             sendStatus(header, bodyStat, tikSample, Status.SEND2PC_STOP);
+                                            System.out.println("стоп");
+                                            readFlagOn[0] = false;
                                         }
                                         System.out.println("count pack = " + countPack);
                                         break;
                                 }
+
+                                continue;
                             }
+
+                            Thread.sleep(1);
+                            tik++;
+                            tikCurrent = tik;
+
+                            if ((tikCurrent % 5) > 0) {
+                                continue;
+                            }
+
+                            double distCurrent = 0;
+                            int tikRazn = tikSample - tikOld;
+                            if (tikRazn == 0) {
+                                distCurrent = distSample;
+                            } else {
+                                double distRazn = distSample - distOld;
+                                distCurrent = (distRazn / tikRazn * (tikCurrent - tikOld)) + distOld;
+                            }
+                            sendData(header, bodyCurrentDistance, tikCurrent, (int) distCurrent);
+
+                            if (tikCurrent < tikSample) {
+                                continue;
+                            }
+                            newCommand = true;
                         }
+                    }
+                    if (n_cycle > 0) {
+                        Thread.sleep(5_000);
+                        countPack = 0;
                     }
                 } catch (FileNotFoundException e) {
                     System.out.println("ошибка открытия файла: " + e.getMessage());
                 } catch (IOException e) {
                     System.out.println("ошибка при закрытии файла: " + e.getMessage());
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
                 }
             }
+            System.out.println("конец циклов");
         }
     }
 
