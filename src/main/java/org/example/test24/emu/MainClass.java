@@ -14,6 +14,7 @@ public class MainClass implements CallBackFromRS232 {
     private BufferedReader reader = null;
     private int tik = 0;
     private double ves = 200;
+    private double force = 14;
 
     private int n_cycle = 0;
     private int countPack = 0;
@@ -28,7 +29,7 @@ public class MainClass implements CallBackFromRS232 {
         String namePort = "";
         commPort = new CommPort();
 
-        if (args.length < 2) {
+        if (args.length < 3) {
             System.out.println("small arguments");
             initErrorCommMessage(CommPort.INITCODE_NOTEXIST, commPort);
             System.exit(1);
@@ -64,11 +65,21 @@ public class MainClass implements CallBackFromRS232 {
             System.out.println("принят вес " + ves);
         } catch (java.lang.Throwable e) {
             //e.printStackTrace();
-            System.out.println("вес по умолчанию 200");
+            ves = 200;
+            System.out.println("вес по умолчанию " + ves);
         }
 
         try {
-            n_cycle = Integer.parseInt(args[3]);
+            force = Double.parseDouble(args[3]);
+            System.out.println("принято усилие " + force);
+        } catch (java.lang.Throwable e) {
+            //e.printStackTrace();
+            force = 14;
+            System.out.println("усилие по умолчанию " + force);
+        }
+
+        try {
+            n_cycle = Integer.parseInt(args[4]);
             System.out.println("автоматический режим " + n_cycle + " циклов");
         } catch (java.lang.Throwable e) {
             System.out.println("ручной режим");
@@ -120,7 +131,7 @@ public class MainClass implements CallBackFromRS232 {
         double distOld = 0;
         byte[] header = { (byte) 0xe6, (byte) 0x19, (byte) 0x55, (byte) 0xaa };
         byte[] bodyStat = new byte[6];
-        byte[] bodyCurrentDistance = new byte[8];
+        byte[] bodyCurrentDistanceVes = new byte[10];
         byte[] bodyVes = new byte[8];
         int tikCurrent = 0;
 
@@ -149,7 +160,7 @@ public class MainClass implements CallBackFromRS232 {
                             case "dc":
                                 tikOld = tikSample;
                                 distOld = distSample;
-                                bodyCurrentDistance[0] = Status.SEND2PC_DATA.getStat();
+                                bodyCurrentDistanceVes[0] = Status.SEND2PC_DATA.getStat();
                                 tikSample = Integer.parseInt(subStrings[1]);
                                 distSample = Double.parseDouble(subStrings[2]);
                                 if (distOld == -1000) distOld = distSample;
@@ -205,7 +216,7 @@ public class MainClass implements CallBackFromRS232 {
                             double distRazn = distSample - distOld;
                             distCurrent = (distRazn / tikRazn * (tikCurrent - tikOld)) + distOld;
                         }
-                        sendData(header, bodyCurrentDistance, tikCurrent, (int) distCurrent);
+                        sendData(header, bodyCurrentDistanceVes, tikCurrent, (int) distCurrent, (int) (ves + force));
 
                         if (tikCurrent < tikSample) {
                             continue;
@@ -255,7 +266,7 @@ public class MainClass implements CallBackFromRS232 {
                                 case "dc":
                                     tikOld = tikSample;
                                     distOld = distSample;
-                                    bodyCurrentDistance[0] = Status.SEND2PC_DATA.getStat();
+                                    bodyCurrentDistanceVes[0] = Status.SEND2PC_DATA.getStat();
                                     tikSample = Integer.parseInt(subStrings[1]);
                                     distSample = Double.parseDouble(subStrings[2]);
                                     if (distOld == -1000) distOld = distSample;
@@ -297,18 +308,14 @@ public class MainClass implements CallBackFromRS232 {
                                         System.out.println("count pack = " + countPack);
                                         break;
                                 }
-
                                 continue;
                             }
-
                             Thread.sleep(1);
                             tik++;
                             tikCurrent = tik;
-
-                            if ((tikCurrent % 5) > 0) {
-                                continue;
-                            }
-
+                            //
+                            if ((tikCurrent % 5) > 0) continue;
+                            //
                             double distCurrent = 0;
                             int tikRazn = tikSample - tikOld;
                             if (tikRazn == 0) {
@@ -317,18 +324,15 @@ public class MainClass implements CallBackFromRS232 {
                                 double distRazn = distSample - distOld;
                                 distCurrent = (distRazn / tikRazn * (tikCurrent - tikOld)) + distOld;
                             }
-                            sendData(header, bodyCurrentDistance, tikCurrent, (int) distCurrent);
-
+                            sendData(header, bodyCurrentDistanceVes, tikCurrent, (int) distCurrent, (int) (ves + force));
+                            //
                             if (tikCurrent < tikSample) {
                                 continue;
                             }
                             newCommand = true;
                         }
                     }
-                    if (n_cycle > 0) {
-                        Thread.sleep(5_000);
-                        countPack = 0;
-                    }
+                    //readFlagOn[0] = false;
                 } catch (FileNotFoundException e) {
                     System.out.println("ошибка открытия файла: " + e.getMessage());
                 } catch (IOException e) {
@@ -341,12 +345,18 @@ public class MainClass implements CallBackFromRS232 {
         }
     }
 
-    private void sendData(byte[] header, byte[] body, int tik, int data) {
+    private void sendData(byte[] header, byte[] body, int tik, int distance, int ves) {
         //System.out.println(tik + "\t" + data);
         countPack++;
+        // код посылки
         body[0] = Status.SEND2PC_DATA.getStat();
+        // tik (4 байта)
         ConvertDigit.Int2bytes(tik, body, 1);
-        ConvertDigit.Int2bytes(data, body, 5, 2);
+        // дистанция 2 байта
+        ConvertDigit.Int2bytes(distance, body, 5, 2);
+        // вес 2 байта
+        ConvertDigit.Int2bytes(ves, body, 7, 2);
+        // к.с.
         body[body.length -1] = ControlSumma.crc8(body, body.length - 1);
         commPort.writeBlock(header);
         commPort.writeBlock(new byte[] {(byte) body.length});
@@ -378,30 +388,4 @@ public class MainClass implements CallBackFromRS232 {
 
     }
 
-    private enum Status {
-        SEND2PC_MALARM      ((byte) 0),
-        SEND2PC_MBACK       ((byte) 1),
-        SEND2PC_STOP        ((byte) 2),
-        SEND2PC_MFORWARD    ((byte) 3),
-        SEND2PC_MSHELF      ((byte) 4),
-        SEND2PC_CALARM      ((byte) 5),
-        SEND2PC_CBACK       ((byte) 6),
-        SEND2PC_CDELAY      ((byte) 7),
-        SEND2PC_CFORWARD    ((byte) 8),
-        SEND2PC_CSHELF      ((byte) 9),
-        SEND2PC_DATA        ((byte)11),
-        SEND2PC_VES         ((byte)12),
-        SEND2PC_MDATA       ((byte)14),
-        SEND2PC_CDATA       ((byte)15);
-
-        private byte stat;
-
-        Status(byte stat) {
-            this.stat = stat;
-        }
-
-        byte getStat() {
-            return stat;
-        }
-    }
 }
