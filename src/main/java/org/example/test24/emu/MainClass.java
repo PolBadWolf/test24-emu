@@ -237,6 +237,7 @@ public class MainClass implements CallBackFromRS232 {
             int op_n = n_cycle;
             while (n_cycle > 0) {
                 n_cycle--;
+                countPack = 0;
                 System.out.println((op_n - n_cycle) + " цикл:");
                 try {
                     reader.close();
