@@ -9,7 +9,6 @@ import java.io.*;
 
 public class MainClass implements CallBackFromRS232 {
     private CommPort commPort = null;
-    //private final BlockingQueue readQueue = new ArrayBlockingQueue(10);
     private final boolean[] readFlagOn = {true};
     private BufferedReader reader = null;
     private int tik = 0;
@@ -18,6 +17,7 @@ public class MainClass implements CallBackFromRS232 {
 
     private int n_cycle = 0;
     private int countPack = 0;
+    private boolean flagStop = false;
     private File file = null;
     private FileReader fileReader = null;
 
@@ -43,6 +43,7 @@ public class MainClass implements CallBackFromRS232 {
         }
 
         System.out.println("порт \"" + namePort + "\" открыт успешно");
+        commPort.ReciveStart();
 
         try {
             file = new File(args[1]);
@@ -240,6 +241,16 @@ public class MainClass implements CallBackFromRS232 {
                 countPack = 0;
                 System.out.println((op_n - n_cycle) + " цикл:");
                 try {
+                    Thread.sleep(1_000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                if (flagStop) {
+                    sendStatus(header, bodyStat, tikSample, Status.SEND2PC_STOP);
+                    System.out.println("стоп из вне");
+                    break;
+                }
+                try {
                     reader.close();
                     fileReader.close();
                     fileReader = new FileReader(file);
@@ -386,7 +397,7 @@ public class MainClass implements CallBackFromRS232 {
 
     @Override
     public void reciveRsPush(byte[] bytes, int lenght) {
-
+        flagStop = true;
     }
 
 }
