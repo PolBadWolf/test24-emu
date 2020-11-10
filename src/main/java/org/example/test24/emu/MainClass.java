@@ -322,11 +322,15 @@ public class MainClass implements CallBackFromRS232 {
                                 }
                                 continue;
                             }
-                            Thread.sleep(1);
-                            tik++;
-                            tikCurrent = tik;
-                            //
-                            if ((tikCurrent % 5) > 0) continue;
+                            if ((tikCurrent % 5) == 0) {
+                                tik++;
+                                tikCurrent = tik;
+                            } else {
+                                Thread.sleep(1);
+                                tik++;
+                                tikCurrent = tik;
+                                continue;
+                            }
                             //
                             double distCurrent = 0;
                             int tikRazn = tikSample - tikOld;
