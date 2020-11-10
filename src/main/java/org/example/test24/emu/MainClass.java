@@ -201,12 +201,14 @@ public class MainClass implements CallBackFromRS232 {
                             continue;
                         }
 
-                        Thread.sleep(1);
-                        tik++;
-                        tikCurrent = tik;
+                        if (tikSample > tik) {
+                            Thread.sleep(1);
+                            tik++;
+                            tikCurrent = tik;
 
-                        if ((tikCurrent % 5) > 0) {
-                            continue;
+                            if ((tikCurrent % 5) > 0) {
+                                continue;
+                            }
                         }
 
                         double distCurrent = 0;
@@ -322,14 +324,14 @@ public class MainClass implements CallBackFromRS232 {
                                 }
                                 continue;
                             }
-                            if ((tikCurrent % 5) == 0) {
-                                tik++;
-                                tikCurrent = tik;
-                            } else {
+                            if (tikSample > tik) {
                                 Thread.sleep(1);
                                 tik++;
                                 tikCurrent = tik;
-                                continue;
+
+                                if ((tikCurrent % 5) > 0) {
+                                    continue;
+                                }
                             }
                             //
                             double distCurrent = 0;
