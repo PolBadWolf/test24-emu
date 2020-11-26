@@ -150,6 +150,7 @@ public class MainClass implements CallBackFromRS232 {
                             case "smf":
                                 tikSample = Integer.parseInt(subStrings[1]);
                                 tik = 0;
+                                tikCurrent = 0;
                                 tikOld = 0;
                                 distSample = -1000;
                                 break;
@@ -269,6 +270,7 @@ public class MainClass implements CallBackFromRS232 {
                                 case "smf":
                                     tikSample = Integer.parseInt(subStrings[1]);
                                     tik = 0;
+                                    tikCurrent = 0;
                                     tikOld = 0;
                                     distSample = -1000;
                                     break;
@@ -403,7 +405,15 @@ public class MainClass implements CallBackFromRS232 {
 
     @Override
     public void reciveRsPush(byte[] bytes, int lenght) {
-        flagStop = true;
+        switch (bytes[0] & 0xff) {
+            case 0x80:
+                // стоп от компьютера
+                System.out.println("пришел стоп");
+                flagStop = true;
+                break;
+            default:
+                throw new IllegalStateException("Unknown command code: " + (bytes[0] & 0xff));
+        }
     }
 
 }
