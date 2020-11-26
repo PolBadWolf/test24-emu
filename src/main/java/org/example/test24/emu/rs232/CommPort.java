@@ -60,21 +60,19 @@ public class CommPort implements CommPort_Interface {
         port = null;
     }
 
-    private int onCycle;
-
     @Override
     public boolean ReciveStart() {
         if (port == null)   return false;
         if (!port.isOpen()) return false;
 
-        threadRS = new Thread( ()->runner() );
+        threadRS = new Thread( ()->runnerReciver() );
         threadRS.start();
         return false;
     }
 
     @Override
     public void ReciveStop() {
-        onCycle = -1;
+        onCycle = false;
 
         try {
             if (threadRS != null) {
@@ -99,109 +97,101 @@ public class CommPort implements CommPort_Interface {
     private int lenghtRecive;
     private int lenghtReciveSumm;
     private byte crc;
-
-    private void runner() {
-        // flush
-        int num = 1;
-        byte[] bytes = new byte[1000];
-
-        while (num > 0) {
-            num = port.readBytes(bytes, bytes.length);
-        }
-
-        onCycle = 1;
-        while (onCycle >= 0) {
-            if (onCycle > 0) {
-                try {
+    // ================================================
+    //                режим работы
+    private static final int reciveMode_SYNHRO = 0;
+    private static final int reciveMode_LENGHT = 1;
+    private static final int reciveMode_BODY = 2;
+    private static final int reciveMode_OUT = 3;
+    private int reciveMode = reciveMode_SYNHRO;
+    // ---------------------
+    //        SYNHRO
+    private static final int reciveHeader_lenght = 4;
+    private byte[] reciveHeader = new byte[reciveHeader_lenght];
+    private byte[] reciveHeader_in = new byte[1];
+    // ---------------------
+    //        LENGHT
+    private int reciveBody_lenght;
+    // ---------------------
+    private byte[] reciveBody_Buffer = new byte[256];
+    private int reciveBody_Index;
+    // ---------------------
+    private boolean onCycle;
+    int recive_num;
+    // ================================================
+    private void runnerReciver() {
+        onCycle = true;
+        reciveMode = reciveMode_SYNHRO;
+        recive_num = 0;
+        try {
+            while (onCycle) {
+                if (recive_num == 0) {
                     Thread.sleep(1);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
                 }
-                if (timeOutSynhro > 1)    timeOutSynhro--;
-                if (timeOutSynhro == 1) {
-                    timeOutSynhro = 0;
-                    noSynhro = true;
-                    flagHead = true;
-                }
-            }
-
-            if (flagHead) {
-                int lenght = headBufferLenght;
-
-                if (noSynhro) {
-                    lenght = 1;
-                    for (int i = 0; i < headBufferLenght - 1; i++) {
-                        headBuffer[i] = headBuffer[i + 1];
-                    }
-                }
-
-                num = port.readBytes(headBuffer, lenght, headBufferLenght - lenght);
-
-                if (num < 0) {
-                    onCycle = -1;
-                    continue;
-                }
-
-                if (num == 0) {
-                    onCycle = 1;
-                    continue;
-                }
-
-                onCycle = 0;
-
-                if (num == lenght) {
-                    if (headBuffer[0] != (byte)0xe6)    continue;
-                    if (headBuffer[1] != (byte)0x19)    continue;
-                    if (headBuffer[2] != (byte)0x55)    continue;
-                    if (headBuffer[3] != (byte)0xaa)    continue;
-
-                    noSynhro = false;
-                    flagHead = true;
-                    timeOutSynhro = timeOutLenght;
-                    lenghtRecive = headBuffer[4] & 0x000000ff;
-                    lenghtReciveSumm = 0;
+                switch (reciveMode) {
+                    case reciveMode_SYNHRO:
+                        recive_synhro();
+                        break;
+                    case reciveMode_LENGHT:
+                        recive_lenght();
+                        break;
+                    case reciveMode_BODY:
+                        recive_body();
+                        break;
+                    case reciveMode_OUT:
+                        recive_out();
+                        break;
+                    default:
+                        throw new IllegalStateException("Unexpected value: " + reciveMode);
                 }
             }
-            else {
-                noSynhro = true;
-                continue;
-            }
-
-            while (lenghtReciveSumm < lenghtRecive) {
-                num = port.readBytes(bytes, lenghtRecive - lenghtReciveSumm, lenghtReciveSumm);
-
-                if (num < 0) {
-                    onCycle = -1;
-                    continue;
-                }
-
-                if (num == 0) {
-                    onCycle = 1;
-                    continue;
-                }
-
-                onCycle = 0;
-                lenghtReciveSumm += num;
-            }
-
-            crc = ControlSumma.crc8(bytes, lenghtRecive - 1);
-
-            if (crc == bytes[lenghtRecive - 1]) {
-                runner_interface.reciveRsPush(bytes, lenghtRecive - 1);
-            }
-            else {
-                noSynhro = true;
-            }
-
-            flagHead = true;
+        } catch (Exception e) {
+            e.printStackTrace();
         }
+    }
+    private void recive_synhro() throws Exception {
+        recive_num = port.readBytes(reciveHeader_in, 1);
+        if (recive_num == 0) return;
+        // shift
+        for (int i = 0; i < reciveHeader_lenght - 1; i++) {
+            reciveHeader[i] = reciveHeader[i + 1];
+        }
+        // new byte
+        reciveHeader[reciveHeader_lenght - 1] = reciveHeader_in[0];
+        // check
+        if ((reciveHeader[0] & 0xff) != 0xe6) return;
+        if ((reciveHeader[1] & 0xff) != 0x19) return;
+        if ((reciveHeader[2] & 0xff) != 0x55) return;
+        if ((reciveHeader[3] & 0xff) != 0xaa) return;
+        // ok
+        reciveMode = reciveMode_LENGHT;
+    }
+    private void recive_lenght() throws Exception {
+        recive_num = port.readBytes(reciveHeader_in, 1);
+        if (recive_num == 0) return;
+        reciveBody_lenght = reciveHeader_in[0] & 0xff;
+        reciveBody_Index = 0;
+        reciveMode = reciveMode_BODY;
+    }
+    private void recive_body() throws Exception {
+        int lenght = reciveBody_lenght - reciveBody_Index;
+        recive_num = port.readBytes(reciveBody_Buffer, lenght, reciveBody_Index);
+        if (recive_num == 0) return;
+        reciveBody_Index += recive_num;
+        if (reciveBody_Index > reciveBody_lenght) throw new Exception("переполнение буффера приема");
+        if (reciveBody_Index < reciveBody_lenght) return;
+        reciveMode = reciveMode_OUT;
+    }
+    private void recive_out() throws Exception {
+        if (ControlSumma.crc8(reciveBody_Buffer, reciveBody_lenght - 1) == reciveBody_Buffer[reciveBody_lenght - 1]) {
+            if (runner_interface != null) {
+                runner_interface.reciveRsPush(reciveBody_Buffer, reciveBody_lenght - 1);
+            }
+        }
+        reciveMode = reciveMode_SYNHRO;
     }
 
     public void writeBlock(byte[] bytes) {
         port.writeBytes(bytes, bytes.length);
-        /*System.out.println();
-        for (int i = 0; i < bytes.length; i++) {
-            System.out.printf("0x%02X ", (bytes[i] & 0xff));
-        }*/
     }
 }
